@@ -87,6 +87,28 @@ class WebhookHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(404, "Not Found")
 
+# Format file size
+def format_bytes(bytes_val):
+    if bytes_val < 1024:
+        return f"{bytes_val} B"
+    elif bytes_val < 1024**2:
+        return f"{bytes_val/1024:.1f} KB"
+    elif bytes_val < 1024**3:
+        return f"{bytes_val/1024**2:.1f} MB"
+    else:
+        return f"{bytes_val/1024**3:.1f} GB"
+
+# Format speed
+def format_speed(bytes_per_sec):
+    if bytes_per_sec < 1024:
+        return f"{bytes_per_sec:.0f} B/s"
+    elif bytes_per_sec < 1024**2:
+        return f"{bytes_per_sec/1024:.1f} KB/s"
+    elif bytes_per_sec < 1024**3:
+        return f"{bytes_per_sec/1024**2:.1f} MB/s"
+    else:
+        return f"{bytes_per_sec/1024**3:.1f} GB/s"
+
 def format_slskd_to_discord(data: Dict[Any, Any]) -> Dict[str, Any]:
     """
     Format Slskd notification data into Discord webhook format.
@@ -99,7 +121,7 @@ def format_slskd_to_discord(data: Dict[Any, Any]) -> Dict[str, Any]:
     """
 
     SLSKD_URL = os.getenv('SLSKD_URL')
-    SLSKD_ICO = f"{SLSKD_URL}/favicon.ico" if SLSKD_URL else None
+    SLSKD_ICO = None # f"{SLSKD_URL}/favicon.ico" if SLSKD_URL else None
 
     # Base Discord webhook structure
     webhook_payload = {
@@ -112,7 +134,7 @@ def format_slskd_to_discord(data: Dict[Any, Any]) -> Dict[str, Any]:
     
     # Format based on message type
     if message_type == "RoomMessageReceived":
-        data = data.get("message")
+        data = data.get("message", {})
 
         if data.get("wasReplayed", False):
             return None # Ignore message
@@ -120,27 +142,25 @@ def format_slskd_to_discord(data: Dict[Any, Any]) -> Dict[str, Any]:
         room_name = data.get("roomName", "Unknown Room")
         timestamp = data.get("timestamp", "")
         message = data.get("message", "")
-        
-        # Set color based on blacklist status
-        color = 15158332 if blacklisted else 5793266  # Red if blacklisted, blue otherwise
-        
+
         webhook_payload.update({
             "content": "💬 You've received a room message",
             "embeds": [{
-                "color": color,
+                "color": 5793266,
                 "author": {
-                    "name": username
+                    "name": username,
+                    "url": f"{SLSKD_URL}/chat" if SLSKD_URL else None
                 },
                 "description": message,
                 "footer": {
-                    "text": f"in #{room_name}"
+                    "text": f"in {room_name}"
                 },
                 "timestamp": timestamp
             }]
         })
     
     elif message_type == "PrivateMessageReceived":
-        data = data.get("message")
+        data = data.get("message", {})
 
         if data.get("wasReplayed", False):
             return None # Ignore message
@@ -153,7 +173,8 @@ def format_slskd_to_discord(data: Dict[Any, Any]) -> Dict[str, Any]:
             "embeds": [{
                 "color": 3447003,  # Blue color for private messages
                 "author": {
-                    "name": username
+                    "name": username,
+                    "url": f"{SLSKD_URL}/chat" if SLSKD_URL else None
                 },
                 "description": message,
                 "footer": {
@@ -162,87 +183,45 @@ def format_slskd_to_discord(data: Dict[Any, Any]) -> Dict[str, Any]:
                 "timestamp": timestamp
             }]
         })
-    
-#     elif message_type == "UserJoined":
-#         username = data.get("username", "Unknown User")
-#         room_name = data.get("roomName", "Unknown Room")
-#
-#         webhook_payload.update({
-#             "content": "👋 User joined a room",
-#             "embeds": [{
-#                 "color": 3066993,  # Green color for joins
-#                 "author": {
-#                     "name": username
-#                 },
-#                 "description": f"Joined the room",
-#                 "footer": {
-#                     "text": f"in #{room_name}"
-#                 },
-#                 "timestamp": timestamp
-#             }]
-#         })
-#
-#     elif message_type == "UserLeft":
-#         username = data.get("username", "Unknown User")
-#         room_name = data.get("roomName", "Unknown Room")
-#
-#         webhook_payload.update({
-#             "content": "👋 User left a room",
-#             "embeds": [{
-#                 "color": 15105570,  # Orange color for leaves
-#                 "author": {
-#                     "name": username
-#                 },
-#                 "description": f"Left the room",
-#                 "footer": {
-#                     "text": f"in #{room_name}"
-#                 },
-#                 "timestamp": timestamp
-#             }]
-#         })
-#
-#     elif message_type == "TransferCompleted":
-#         username = data.get("username", "Unknown User")
-#         filename = data.get("filename", "Unknown File")
-#         direction = data.get("direction", "unknown")  # "Upload" or "Download"
-#
-#         emoji = "⬆️" if direction.lower() == "upload" else "⬇️"
-#         color = 3066993 if direction.lower() == "upload" else 3447003
-#
-#         webhook_payload.update({
-#             "content": f"{emoji} Transfer completed",
-#             "embeds": [{
-#                 "color": color,
-#                 "author": {
-#                     "name": username
-#                 },
-#                 "description": f"**{filename}**",
-#                 "footer": {
-#                     "text": f"{direction} completed"
-#                 },
-#                 "timestamp": timestamp
-#             }]
-#         })
-#
-#     elif message_type == "SearchRequested":
-#         username = data.get("username", "Unknown User")
-#         query = data.get("query", "")
-#
-#         webhook_payload.update({
-#             "content": "🔍 Search request received",
-#             "embeds": [{
-#                 "color": 10181046,  # Purple color for searches
-#                 "author": {
-#                     "name": username
-#                 },
-#                 "description": f"Searched for: **{query}**",
-#                 "footer": {
-#                     "text": "Search Request"
-#                 },
-#                 "timestamp": timestamp
-#             }]
-#         })
-    
+
+    elif message_type == "UploadFileComplete":
+        transfer = data.get("transfer", {})
+        username = transfer.get("username", "Unknown User")
+        local_filename = data.get("localFilename", "Unknown File")
+        remote_filename = data.get("remoteFilename", "")
+
+        # Extract just the filename from the full path
+        filename = os.path.basename(local_filename)
+
+        # Get transfer details
+        file_size = transfer.get("size", 0)
+        bytes_transferred = transfer.get("bytesTransferred", 0)
+        average_speed = transfer.get("averageSpeed", 0)
+        elapsed_time = transfer.get("elapsedTime", "Unknown")
+        state = transfer.get("state", "Unknown")
+
+        # Create description with transfer details
+        description = f"**{filename}**\n"
+        description += f"📁 Size: {format_bytes(file_size)}\n"
+        description += f"⚡ Speed: {format_speed(average_speed)}\n"
+        description += f"⏱️ Duration: {elapsed_time}\n"
+        description += f"✅ Status: {state}"
+
+        webhook_payload.update({
+            "content": "⬆️ Upload completed successfully!",
+            "embeds": [{
+                "color": 3066993,  # Green for successful upload
+                "author": {
+                    "name": username
+                },
+                "description": description,
+                "footer": {
+                    "text": f"Upload to: {username}"
+                },
+                "timestamp": timestamp
+            }]
+        })
+
     else:
         # Generic format for unknown message types
         webhook_payload.update({
@@ -278,7 +257,7 @@ def send_to_discord_webhook(webhook_url: str, data: Dict[Any, Any]) -> bool:
             return True
 
         logger.info(f"🎨 Formatted Slskd '{data.get('type')}' notification for Discord")
-        logger.debug(json.dumps(webhook_payload))
+        logger.debug(json.dumps(payload))
         response = requests.post(
             webhook_url,
             json=payload,
