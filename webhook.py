@@ -38,12 +38,11 @@ class WebhookHandler(BaseHTTPRequestHandler):
             try:
                 json_data = json.loads(post_data.decode('utf-8'))
                 logger.info(f"📦 Received webhook data: {json_data.get('type', 'Unknown type')}")
-                logger.debug(json.dumps(data))
+                logger.debug(json.dumps(json_data))
             except json.JSONDecodeError as e:
                 logger.error(f"❌ Invalid JSON received: {e}")
                 self.send_error(400, "Invalid JSON")
                 return
-            finally:
             
             # Send to Discord
             discord_webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
@@ -116,7 +115,7 @@ def format_slskd_to_discord(data: Dict[Any, Any]) -> Dict[str, Any]:
         data = data.get("message")
 
         if data.get("wasReplayed", False):
-            webhook_payload = None # Ignore message
+            return None # Ignore message
         username = data.get("username", "Unknown User")
         room_name = data.get("roomName", "Unknown Room")
         timestamp = data.get("timestamp", "")
@@ -144,7 +143,7 @@ def format_slskd_to_discord(data: Dict[Any, Any]) -> Dict[str, Any]:
         data = data.get("message")
 
         if data.get("wasReplayed", False):
-            webhook_payload = None # Ignore message
+            return None # Ignore message
         username = data.get("username", "Unknown User")
         timestamp = data.get("timestamp", "")
         message = data.get("message", "")
@@ -275,7 +274,7 @@ def send_to_discord_webhook(webhook_url: str, data: Dict[Any, Any]) -> bool:
     try:
         payload = format_slskd_to_discord(data)
         if payload is None:
-            logger.info(f"🎨 Ignored Slskd '{data.get('type')}' notification")
+            logger.info(f"🚫 Ignored Slskd '{data.get('type')}' notification")
             return True
 
         logger.info(f"🎨 Formatted Slskd '{data.get('type')}' notification for Discord")
