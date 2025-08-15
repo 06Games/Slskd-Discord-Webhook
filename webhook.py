@@ -1,13 +1,18 @@
+#!/usr/bin/env python3
+"""
+Slskd Discord Webhook Relay Server
+
+A lightweight HTTP server that receives webhooks from Slskd and forwards
+formatted notifications to Discord via webhook.
+"""
+
 import os
-import json
-import requests
 import sys
-from typing import Dict, Any
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse
-import threading
 import signal
 import logging
+from http.server import HTTPServer
+
+from server import WebhookHandler
 
 # Configure logging
 logging.basicConfig(
@@ -18,265 +23,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-class WebhookHandler(BaseHTTPRequestHandler):
-    """HTTP request handler for incoming webhooks."""
-    
-    def log_message(self, format, *args):
-        """Override to use our logger instead of stderr."""
-        logger.info(f"{self.address_string()} - {format % args}")
-    
-    def do_POST(self):
-        """Handle POST requests (webhook calls)."""
-        try:
-            # Get content length
-            content_length = int(self.headers.get('Content-Length', 0))
-            
-            # Read the POST data
-            post_data = self.rfile.read(content_length)
-            
-            # Parse JSON
-            try:
-                json_data = json.loads(post_data.decode('utf-8'))
-                logger.info(f"📦 Received webhook data: {json_data.get('type', 'Unknown type')}")
-                logger.debug(json.dumps(json_data))
-            except json.JSONDecodeError as e:
-                logger.error(f"❌ Invalid JSON received: {e}")
-                self.send_error(400, "Invalid JSON")
-                return
-            
-            # Send to Discord
-            discord_webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
-            if not discord_webhook_url:
-                logger.error("❌ DISCORD_WEBHOOK_URL environment variable not set")
-                self.send_error(500, "Discord webhook URL not configured")
-                return
-            
-            success = send_to_discord_webhook(discord_webhook_url, json_data)
-            
-            if success:
-                # Send success response
-                self.send_response(200)
-                self.send_header('Content-type', 'application/json')
-                self.end_headers()
-                response = {"status": "success", "message": "Webhook processed successfully"}
-                self.wfile.write(json.dumps(response).encode())
-                logger.info("✅ Webhook processed successfully")
-            else:
-                self.send_error(500, "Failed to send to Discord")
-                
-        except Exception as e:
-            logger.error(f"❌ Error processing webhook: {e}")
-            self.send_error(500, f"Internal server error: {str(e)}")
-    
-    def do_GET(self):
-        """Handle GET requests (health check)."""
-        if self.path == '/health' or self.path == '/':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            response = {
-                "status": "healthy",
-                "service": "Discord Webhook Relay",
-                "endpoints": {
-                    "webhook": "POST /webhook",
-                    "health": "GET /health"
-                }
-            }
-            self.wfile.write(json.dumps(response, indent=2).encode())
-            logger.info("🏥 Health check requested")
-        else:
-            self.send_error(404, "Not Found")
-
-# Format file size
-def format_bytes(bytes_val):
-    if bytes_val < 1024:
-        return f"{bytes_val} B"
-    elif bytes_val < 1024**2:
-        return f"{bytes_val/1024:.1f} KB"
-    elif bytes_val < 1024**3:
-        return f"{bytes_val/1024**2:.1f} MB"
-    else:
-        return f"{bytes_val/1024**3:.1f} GB"
-
-# Format speed
-def format_speed(bytes_per_sec):
-    if bytes_per_sec < 1024:
-        return f"{bytes_per_sec:.0f} B/s"
-    elif bytes_per_sec < 1024**2:
-        return f"{bytes_per_sec/1024:.1f} KB/s"
-    elif bytes_per_sec < 1024**3:
-        return f"{bytes_per_sec/1024**2:.1f} MB/s"
-    else:
-        return f"{bytes_per_sec/1024**3:.1f} GB/s"
-
-def format_slskd_to_discord(data: Dict[Any, Any]) -> Dict[str, Any]:
-    """
-    Format Slskd notification data into Discord webhook format.
-    
-    Args:
-        data: Raw Slskd notification data
-        
-    Returns:
-        Formatted Discord webhook payload
-    """
-
-    SLSKD_URL = os.getenv('SLSKD_URL')
-    SLSKD_ICO = None # f"{SLSKD_URL}/favicon.ico" if SLSKD_URL else None
-
-    # Base Discord webhook structure
-    webhook_payload = {
-        "username": "Slskd",
-        "avatar_url": SLSKD_ICO
-    }
-    
-    message_type = data.get("type", "Unknown")
-    timestamp = data.get("timestamp", "")
-    
-    # Format based on message type
-    if message_type == "RoomMessageReceived":
-        data = data.get("message", {})
-
-        if data.get("wasReplayed", False):
-            return None # Ignore message
-        username = data.get("username", "Unknown User")
-        room_name = data.get("roomName", "Unknown Room")
-        timestamp = data.get("timestamp", "")
-        message = data.get("message", "")
-
-        webhook_payload.update({
-            "content": "💬 You've received a room message",
-            "embeds": [{
-                "color": 5793266,
-                "author": {
-                    "name": username,
-                    "url": f"{SLSKD_URL}/chat" if SLSKD_URL else None
-                },
-                "description": message,
-                "footer": {
-                    "text": f"in {room_name}"
-                },
-                "timestamp": timestamp
-            }]
-        })
-    
-    elif message_type == "PrivateMessageReceived":
-        data = data.get("message", {})
-
-        if data.get("wasReplayed", False):
-            return None # Ignore message
-        username = data.get("username", "Unknown User")
-        timestamp = data.get("timestamp", "")
-        message = data.get("message", "")
-        
-        webhook_payload.update({
-            "content": "📩 You've received a private message",
-            "embeds": [{
-                "color": 3447003,  # Blue color for private messages
-                "author": {
-                    "name": username,
-                    "url": f"{SLSKD_URL}/chat" if SLSKD_URL else None
-                },
-                "description": message,
-                "footer": {
-                    "text": "Private Message"
-                },
-                "timestamp": timestamp
-            }]
-        })
-
-    elif message_type == "UploadFileComplete":
-        transfer = data.get("transfer", {})
-        username = transfer.get("username", "Unknown User")
-        local_filename = data.get("localFilename", "Unknown File")
-        remote_filename = data.get("remoteFilename", "")
-
-        # Extract just the filename from the full path
-        filename = os.path.basename(local_filename)
-
-        # Get transfer details
-        file_size = transfer.get("size", 0)
-        bytes_transferred = transfer.get("bytesTransferred", 0)
-        average_speed = transfer.get("averageSpeed", 0)
-        elapsed_time = transfer.get("elapsedTime", "Unknown")
-        state = transfer.get("state", "Unknown")
-
-        # Create description with transfer details
-        description = f"**{filename}**\n"
-        description += f"📁 Size: {format_bytes(file_size)}\n"
-        description += f"⚡ Speed: {format_speed(average_speed)}\n"
-        description += f"⏱️ Duration: {elapsed_time}\n"
-        description += f"✅ Status: {state}"
-
-        webhook_payload.update({
-            "content": "⬆️ Upload completed successfully!",
-            "embeds": [{
-                "color": 3066993,  # Green for successful upload
-                "author": {
-                    "name": username
-                },
-                "description": description,
-                "footer": {
-                    "text": f"Upload to: {username}"
-                },
-                "timestamp": timestamp
-            }]
-        })
-
-    else:
-        # Generic format for unknown message types
-        webhook_payload.update({
-            "content": f"📢 Slskd Notification: {message_type}",
-            "embeds": [{
-                "color": 9807270,  # Gray color for unknown types
-                "title": message_type,
-                "description": f"```json\n{json.dumps(data, indent=2)}\n```",
-                "footer": {
-                    "text": "Raw notification data"
-                },
-                "timestamp": timestamp
-            }]
-        })
-    
-    return webhook_payload
-
-def send_to_discord_webhook(webhook_url: str, data: Dict[Any, Any]) -> bool:
-    """
-    Send data to a Discord webhook.
-    
-    Args:
-        webhook_url: Discord webhook URL
-        data: Dictionary containing the data to send
-        
-    Returns:
-        True if successful, False otherwise
-    """
-    try:
-        payload = format_slskd_to_discord(data)
-        if payload is None:
-            logger.info(f"🚫 Ignored Slskd '{data.get('type')}' notification")
-            return True
-
-        logger.info(f"🎨 Formatted Slskd '{data.get('type')}' notification for Discord")
-        logger.debug(json.dumps(payload))
-        response = requests.post(
-            webhook_url,
-            json=payload,
-            headers={"Content-Type": "application/json"},
-            timeout=10
-        )
-        
-        response.raise_for_status()
-        logger.info(f"✅ Successfully sent data to Discord webhook (Status: {response.status_code})")
-        return True
-        
-    except requests.exceptions.RequestException as e:
-        logger.error(f"❌ Error sending to Discord webhook: {e}\n{e.response.text}")
-        return False
 
 def signal_handler(signum, frame):
     """Handle shutdown signals gracefully."""
     logger.info(f"\n🛑 Received signal {signum}. Shutting down gracefully...")
     sys.exit(0)
+
 
 def main():
     """
@@ -302,7 +54,7 @@ def main():
         server = HTTPServer((HOST, PORT), WebhookHandler)
         
         logger.info(f"🚀 Starting webhook server on http://{HOST}:{PORT}")
-        logger.info(f"📡 Discord webhook configured: {discord_webhook_url[:50]}...")
+        logger.info(f"📡 Discord webhook configured: {discord_webhook_url}")
         logger.info(f"💡 Send POST requests to: http://{HOST}:{PORT}/webhook")
         logger.info(f"🏥 Health check available at: http://{HOST}:{PORT}/health")
         logger.info(f"🛑 Press Ctrl+C to stop the server")
@@ -322,6 +74,7 @@ def main():
     except Exception as e:
         logger.error(f"❌ Unexpected error: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
