@@ -12,7 +12,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the application
-COPY webhook.py .
+COPY *.py .
 
 # Change ownership to non-root user
 RUN chown -R webhook:webhook /app
