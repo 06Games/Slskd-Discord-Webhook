@@ -125,6 +125,71 @@ def _format_unknown_message(data: Dict[Any, Any], message_type: str) -> Dict[str
     return payload
 
 
+def _format_download_complete(data: Dict[Any, Any]) -> Dict[str, Any]:
+    """Format download file complete notification."""
+    transfer = data.get("transfer", {})
+    username = transfer.get("username", "Unknown User")
+    local_filename = data.get("localFilename", "Unknown File")
+    timestamp = data.get("timestamp", "")
+    
+    # Extract filename and create description
+    filename = os.path.basename(local_filename)
+    file_size = transfer.get("size", 0)
+    average_speed = transfer.get("averageSpeed", 0)
+    elapsed_time = transfer.get("elapsedTime", "Unknown")
+    state = transfer.get("state", "Unknown")
+    
+    description = (
+        f"**{filename}**\n"
+        f"📁 Size: {format_bytes(file_size)}\n"
+        f"⚡ Speed: {format_speed(average_speed)}\n"
+        f"⏱️ Duration: {elapsed_time}\n"
+        f"✅ Status: {state}"
+    )
+    
+    payload = _create_base_webhook_payload()
+    payload.update({
+        "content": "⬇️ Download completed successfully!",
+        "embeds": [{
+            "color": 3447003,  # Blue for downloads
+            "author": {"name": username},
+            "description": description,
+            "footer": {"text": f"Downloaded from: {username}"},
+            "timestamp": timestamp
+        }]
+    })
+    return payload
+
+
+def _format_download_directory_complete(data: Dict[Any, Any]) -> Dict[str, Any]:
+    """Format download directory complete notification."""
+    username = data.get("username", "Unknown User")
+    local_directory = data.get("localDirectoryName", "Unknown Directory")
+    remote_directory = data.get("remoteDirectoryName", "")
+    timestamp = data.get("timestamp", "")
+    
+    # Extract directory name
+    directory_name = os.path.basename(local_directory)
+    
+    description = (
+        f"**{directory_name}**\n"
+        f"📂 Complete directory downloaded successfully"
+    )
+    
+    payload = _create_base_webhook_payload()
+    payload.update({
+        "content": "📁 Directory download completed!",
+        "embeds": [{
+            "color": 5793266,  # Purple for directory downloads
+            "author": {"name": username},
+            "description": description,
+            "footer": {"text": f"Directory from: {username}"},
+            "timestamp": timestamp
+        }]
+    })
+    return payload
+
+
 def format_slskd_to_discord(data: Dict[Any, Any]) -> Optional[Dict[str, Any]]:
     """
     Format Slskd notification data into Discord webhook format.
@@ -142,6 +207,8 @@ def format_slskd_to_discord(data: Dict[Any, Any]) -> Optional[Dict[str, Any]]:
         "RoomMessageReceived": _format_room_message,
         "PrivateMessageReceived": _format_private_message,
         "UploadFileComplete": _format_upload_complete,
+        "DownloadFileComplete": _format_download_complete,
+        "DownloadDirectoryComplete": _format_download_directory_complete,
     }
     
     handler = handlers.get(message_type)
