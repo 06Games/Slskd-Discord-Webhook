@@ -46,7 +46,7 @@ def format_duration(duration_str: str) -> str:
                 parts.append(f"{hours}h")
             if minutes > 0:
                 parts.append(f"{minutes}m")
-            if seconds > 0:
+            if seconds > 1:
                 parts.append(f"{int(seconds)}s")
             
             return " ".join(parts) if parts else "< 1s"
