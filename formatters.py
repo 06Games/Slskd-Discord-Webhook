@@ -6,7 +6,7 @@ import os
 import json
 from typing import Dict, Any, Optional
 
-from utils import format_bytes, format_speed
+from utils import format_bytes, format_speed, format_duration, format_datetime
 
 
 def _create_base_webhook_payload() -> Dict[str, Any]:
@@ -71,15 +71,17 @@ def _format_private_message(data: Dict[Any, Any]) -> Optional[Dict[str, Any]]:
     return payload
 
 
-def _format_upload_complete(data: Dict[Any, Any]) -> Dict[str, Any]:
-    """Format upload complete notification."""
+def _format_transfer_complete(data: Dict[Any, Any], is_upload: bool = True) -> Dict[str, Any]:
+    """Format upload or download complete notification."""
     transfer = data.get("transfer", {})
     username = transfer.get("username", "Unknown User")
     local_filename = data.get("localFilename", "Unknown File")
     timestamp = data.get("timestamp", "")
+    requested_at = transfer.get("requestedAt", "")
     
-    # Extract filename and create description
+    # Extract filename and directory path
     filename = os.path.basename(local_filename)
+    directory_path = os.path.dirname(local_filename)
     file_size = transfer.get("size", 0)
     average_speed = transfer.get("averageSpeed", 0)
     elapsed_time = transfer.get("elapsedTime", "Unknown")
@@ -87,24 +89,38 @@ def _format_upload_complete(data: Dict[Any, Any]) -> Dict[str, Any]:
     
     description = (
         f"**{filename}**\n"
+        f"~# {directory_path}~\n"
         f"📁 Size: {format_bytes(file_size)}\n"
         f"⚡ Speed: {format_speed(average_speed)}\n"
-        f"⏱️ Duration: {elapsed_time}\n"
+        f"⏱️ Duration: {format_duration(elapsed_time)}\n"
         f"✅ Status: {state}"
     )
     
+    # Configure content and styling based on transfer type
+    if is_upload:
+        content = "⬆️ Upload completed successfully!"
+        color = 3066993  # Green for uploads
+    else:
+        content = "⬇️ Download completed successfully!"
+        color = 3447003  # Blue for downloads
+    
     payload = _create_base_webhook_payload()
     payload.update({
-        "content": "⬆️ Upload completed successfully!",
+        "content": content,
         "embeds": [{
-            "color": 3066993,
+            "color": color,
             "author": {"name": username},
             "description": description,
-            "footer": {"text": f"Upload to: {username}"},
+            "footer": {"text": f"Requested at {format_datetime(requested_at)}"},
             "timestamp": timestamp
         }]
     })
     return payload
+
+
+def _format_upload_complete(data: Dict[Any, Any]) -> Dict[str, Any]:
+    """Format upload complete notification."""
+    return _format_transfer_complete(data, is_upload=True)
 
 
 def _format_unknown_message(data: Dict[Any, Any], message_type: str) -> Dict[str, Any]:
@@ -127,38 +143,7 @@ def _format_unknown_message(data: Dict[Any, Any], message_type: str) -> Dict[str
 
 def _format_download_complete(data: Dict[Any, Any]) -> Dict[str, Any]:
     """Format download file complete notification."""
-    transfer = data.get("transfer", {})
-    username = transfer.get("username", "Unknown User")
-    local_filename = data.get("localFilename", "Unknown File")
-    timestamp = data.get("timestamp", "")
-    
-    # Extract filename and create description
-    filename = os.path.basename(local_filename)
-    file_size = transfer.get("size", 0)
-    average_speed = transfer.get("averageSpeed", 0)
-    elapsed_time = transfer.get("elapsedTime", "Unknown")
-    state = transfer.get("state", "Unknown")
-    
-    description = (
-        f"**{filename}**\n"
-        f"📁 Size: {format_bytes(file_size)}\n"
-        f"⚡ Speed: {format_speed(average_speed)}\n"
-        f"⏱️ Duration: {elapsed_time}\n"
-        f"✅ Status: {state}"
-    )
-    
-    payload = _create_base_webhook_payload()
-    payload.update({
-        "content": "⬇️ Download completed successfully!",
-        "embeds": [{
-            "color": 3447003,  # Blue for downloads
-            "author": {"name": username},
-            "description": description,
-            "footer": {"text": f"Downloaded from: {username}"},
-            "timestamp": timestamp
-        }]
-    })
-    return payload
+    return _format_transfer_complete(data, is_upload=False)
 
 
 def _format_download_directory_complete(data: Dict[Any, Any]) -> Dict[str, Any]:
@@ -183,7 +168,6 @@ def _format_download_directory_complete(data: Dict[Any, Any]) -> Dict[str, Any]:
             "color": 5793266,  # Purple for directory downloads
             "author": {"name": username},
             "description": description,
-            "footer": {"text": f"Directory from: {username}"},
             "timestamp": timestamp
         }]
     })
