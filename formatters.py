@@ -95,7 +95,7 @@ def _format_transfer_complete(data: Dict[Any, Any], is_upload: bool = True) -> D
     
     description = (
         f"**{filename}**\n"
-        f"~# {directory_path}~\n"
+        f"-# {directory_path}\n"
         f"📁 Size: {format_bytes(file_size)}\n"
         f"⚡ Speed: {format_speed(average_speed)}\n"
         f"⏱️ Duration: {format_duration(elapsed_time)}\n"
