@@ -12,7 +12,7 @@ from utils import format_bytes, format_speed, format_duration, format_datetime
 def _get_ping_content(base_content: str) -> str:
     """Get content with user ping if DISCORD_PING_USER_ID is set."""
     user_id = os.getenv('DISCORD_PING_USER_ID')
-    return f"<@{user_id}> {base_content}" if user_id else base_content
+    return f"<@{user_id}>\n{base_content}" if user_id else base_content
 
 
 def _create_base_webhook_payload() -> Dict[str, Any]:
