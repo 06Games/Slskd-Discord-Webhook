@@ -9,6 +9,12 @@ from typing import Dict, Any, Optional
 from utils import format_bytes, format_speed, format_duration, format_datetime
 
 
+def _get_ping_content(base_content: str) -> str:
+    """Get content with user ping if DISCORD_PING_USER_ID is set."""
+    user_id = os.getenv('DISCORD_PING_USER_ID')
+    return f"<@{user_id}> {base_content}" if user_id else base_content
+
+
 def _create_base_webhook_payload() -> Dict[str, Any]:
     """Create base Discord webhook payload structure."""
     return {
@@ -46,7 +52,7 @@ def _format_room_message(data: Dict[Any, Any]) -> Optional[Dict[str, Any]]:
     
     payload = _create_base_webhook_payload()
     payload.update({
-        "content": "💬 You've received a room message",
+        "content": _get_ping_content("💬 You've received a room message"),
         "embeds": [_create_message_embed(username, message, timestamp, 5793266, f"in {room_name}")]
     })
     return payload
@@ -65,7 +71,7 @@ def _format_private_message(data: Dict[Any, Any]) -> Optional[Dict[str, Any]]:
     
     payload = _create_base_webhook_payload()
     payload.update({
-        "content": "📩 You've received a private message",
+        "content": _get_ping_content("📩 You've received a private message"),
         "embeds": [_create_message_embed(username, message, timestamp, 3447003, "Private Message")]
     })
     return payload
