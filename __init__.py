@@ -11,9 +11,9 @@ from server import WebhookHandler
 from utils import format_bytes, format_speed
 
 __all__ = [
-    "send_to_discord_webhook",
-    "format_slskd_to_discord", 
     "WebhookHandler",
     "format_bytes",
-    "format_speed"
+    "format_slskd_to_discord",
+    "format_speed",
+    "send_to_discord_webhook",
 ]
