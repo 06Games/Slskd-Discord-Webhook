@@ -180,6 +180,66 @@ def _format_download_directory_complete(data: Dict[Any, Any]) -> Dict[str, Any]:
     return payload
 
 
+def _format_client_connected(data: Dict[Any, Any]) -> Dict[str, Any]:
+    """Format Soulseek client connected notification."""
+    timestamp = data.get("timestamp", "")
+    message = data.get("message")
+    
+    description = message if message else "Connected to the Soulseek network"
+    
+    embed: Dict[str, Any] = {
+        "color": 3066993,  # Green
+        "title": "Connected to Soulseek",
+        "description": description,
+        "timestamp": timestamp
+    }
+        
+    payload = _create_base_webhook_payload()
+    payload.update({
+        "content": "🟢 Connected to Soulseek!",
+        "embeds": [embed]
+    })
+    return payload
+
+
+def _format_client_disconnected(data: Dict[Any, Any]) -> Dict[str, Any]:
+    """Format Soulseek client disconnected notification."""
+    timestamp = data.get("timestamp", "")
+    message = data.get("message")
+    exception = data.get("exception")
+    
+    reason = message
+    if isinstance(exception, dict):
+        exc_msg = exception.get("message")
+        if exc_msg and exc_msg != message:
+            reason = f"{reason} ({exc_msg})" if reason else exc_msg
+        elif not reason:
+            inner = exception.get("innerException")
+            if isinstance(inner, dict) and inner.get("message"):
+                reason = inner.get("message")
+    elif isinstance(exception, str) and exception and exception != message:
+        reason = f"{reason} ({exception})" if reason else exception
+
+    if reason:
+        description = f"Disconnected from the Soulseek network\n**Reason:** {reason}"
+    else:
+        description = "Disconnected from the Soulseek network"
+    
+    embed: Dict[str, Any] = {
+        "color": 15158332,  # Red
+        "title": "Disconnected from Soulseek",
+        "description": description,
+        "timestamp": timestamp
+    }
+        
+    payload = _create_base_webhook_payload()
+    payload.update({
+        "content": "🔴 Disconnected from Soulseek!",
+        "embeds": [embed]
+    })
+    return payload
+
+
 def format_slskd_to_discord(data: Dict[Any, Any]) -> Optional[Dict[str, Any]]:
     """
     Format Slskd notification data into Discord webhook format.
@@ -199,6 +259,8 @@ def format_slskd_to_discord(data: Dict[Any, Any]) -> Optional[Dict[str, Any]]:
         "UploadFileComplete": _format_upload_complete,
         "DownloadFileComplete": _format_download_complete,
         "DownloadDirectoryComplete": _format_download_directory_complete,
+        "SoulseekClientConnected": _format_client_connected,
+        "SoulseekClientDisconnected": _format_client_disconnected,
     }
     
     handler = handlers.get(message_type)
@@ -206,3 +268,4 @@ def format_slskd_to_discord(data: Dict[Any, Any]) -> Optional[Dict[str, Any]]:
         return handler(data)
     else:
         return _format_unknown_message(data, message_type)
+
